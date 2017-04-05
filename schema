@@ -1,0 +1,6 @@
+CUSTOMER_TABLE(string customer_id , string first_name , string last_name , int total_purchase , string shipping address) ;
+EMPLOYEE_TABLE(string employee_id , string first_name , string last_name , string rank_id , string location_id , string race) ;
+LOCATION_TABLE(string location_id , string owner_id , string location_name , string location_type , int total_stock_worth , string location_address) ;
+ITEM_SELL_TABLE(string item_id , string location_id , string item_name , string item_type , int item_price , int level_requirement , int item_quantity) ;
+ITEM_BUY_TABLE(string item_id , string location_id , string item_name , string item_type , int item_price , int level_requirement , int item_quantity) ;
+RANK_TABLE(string rank_id , string rank_name , int rank_wage) ;
