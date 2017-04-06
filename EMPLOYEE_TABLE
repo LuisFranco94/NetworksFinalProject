@@ -1,1 +1,4 @@
-P00003,I WORK,AT THE STORE,12345,the_store_itself;
+P00003,I WORK,AT THE STORE,R01,the_store_itself,Dragonkind;
+P20003,Caius,Cosades,R05,Balmora,Human;
+P23411,Ricky,Martin,R10,New York City Baby,Human;
+P66462,Wheres,Lupers,R02,Grassy Field,Wolfdog;
