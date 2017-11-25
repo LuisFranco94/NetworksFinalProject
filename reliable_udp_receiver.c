@@ -30,7 +30,9 @@ int recvFile(char *receivedFile , int portNum , int maxSize , int options)
 	int addr_len ;
 	// char send_buffer[4096] ;
 	char receive_buffer[4096] ;
+	char output_buffer[4096] ;
 	int retcode ;
+	struct in_addr client_ip_addr ; 
 
 	// create socket.
 
@@ -75,7 +77,22 @@ int recvFile(char *receivedFile , int portNum , int maxSize , int options)
 			printf("\n> file transfer complete.\n") ;	
 			break ;
 		}
-		else printf("\n> message received:  %s\n" , receive_buffer) ;
+
+		else 
+		{
+			printf("\n> message received:  %s\n" , receive_buffer) ;
+		}
+
+		memcpy(&client_ip_addr , &sender_addr.sin_addr.s_addr , 4) ;
+
+		strcpy(output_buffer , "ACK") ;
+		retcode = sendto(receiver_s , output_buffer , (strlen(output_buffer) + 1) , 0 , (struct sockaddr *)&sender_addr , sizeof(sender_addr)) ;
+
+		if (retcode < 0)
+		{
+			printf("sendto() failed.  exiting.  \n") ;
+			exit(-1) ;
+		}
 	}
 
 	// finished transmission.
