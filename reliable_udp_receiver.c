@@ -15,7 +15,7 @@
 int main()
 {
 	char receivedFile[] = "fileReceive.dat" ; // put received data here.
-	int portNum = 6008 ; // confirm.
+	int portNum = 6028 ; // 6008 and 6028 should work.
 	int maxSize = 10 ;
 	int options = 0 ;
 
@@ -30,9 +30,20 @@ int recvFile(char *receivedFile , int portNum , int maxSize , int options)
 	int addr_len ;
 	// char send_buffer[4096] ;
 	char receive_buffer[4096] ;
+	char message_buffer[4096] ;
 	char output_buffer[4096] ;
 	int retcode ;
 	struct in_addr client_ip_addr ; 
+
+	int sequence_number = 1000000000 ;
+	int acknowledgement_number ;
+
+	char received_sequence_char[12] ;
+	int received_sequence_int ;
+	int expected_sequence_int ;
+	char received_flags[3] ;
+
+	int next_sequence_number = -1 ;
 
 	// create socket.
 
@@ -58,13 +69,74 @@ int recvFile(char *receivedFile , int portNum , int maxSize , int options)
 
 	// receive messages from sender.
 
-	printf("\n> waiting for message...\n\n") ;
+	printf("\n> waiting for message...") ;
 
 	addr_len = sizeof(sender_addr) ;
 
-	while (1)
+	// open file.
+
+	FILE *file ;
+	file = fopen("received_file.dat" , "w+") ;
+	// fprintf(file, "%s %s %s %d", "We", "are", "in", 2012) ;
+	// fclose(file) ;
+
+	// establish connection.
+
+	/*
+		receive SYN and SEQUENCE_NUMBER.
+		send SYN , ACK , and SEQUENCE_NUMBER.
+		receive ACK and SEQUENCE_NUMBER + 1.
+	*/
+
+	/*
+
+	memset(receive_buffer , '\0' , sizeof(receive_buffer)) ; // clear buffer.
+	retcode = recvfrom(receiver_s , receive_buffer , sizeof(receive_buffer) , 0 , (struct sockaddr *)&sender_addr , &addr_len) ; // blocking , wait for SYN and SEQUENCE_NUMBER.
+	
+	received_flags[0] = receive_buffer[0] ;
+	received_flags[1] = receive_buffer[1] ;
+	received_flags[2] = receive_buffer[2] ;
+
+	received_sequence_char[0] = receive_buffer[3] ;
+	received_sequence_char[1] = receive_buffer[4] ;
+	received_sequence_char[2] = receive_buffer[5] ;
+	received_sequence_char[3] = receive_buffer[6] ;
+	received_sequence_char[4] = receive_buffer[7] ;
+	received_sequence_char[5] = receive_buffer[8] ;
+	received_sequence_char[6] = receive_buffer[9] ;
+	received_sequence_char[7] = receive_buffer[10] ;
+	received_sequence_char[8] = receive_buffer[11] ;
+	received_sequence_char[9] = receive_buffer[12] ;
+	
+	sscanf(received_sequence_char , "%d" , &received_sequence_int) ;
+
+	if (received_flags[0] != '1') // receieve SYN.
 	{
+		printf("\n> connection failed.\n") ;
+		printf("> exiting.\n\n") ;
+		exit(-1) ; 
+	}
+
+	receive_buffer[12] = '1' ; 
+	strcpy(output_buffer , receive_buffer) ;
+	retcode = sendto(receiver_s , output_buffer , (strlen(output_buffer) + 1) , 0 , (struct sockaddr *)&sender_addr , sizeof(sender_addr)) ;
+
+	if (retcode < 0)
+	{
+		printf("sendto() failed.  exiting.  \n") ;
+		exit(-1) ;
+	}
+
+	printf("\n") ;
+
+	*/
+
+	while (1) // receive message.
+	{
+		memset(receive_buffer , '\0' , sizeof(receive_buffer)) ; // clear buffer.
 		retcode = recvfrom(receiver_s , receive_buffer , sizeof(receive_buffer) , 0 , (struct sockaddr *)&sender_addr , &addr_len) ;
+
+		// sscanf(received_sequence_char , "%d" , &received_sequence_int) ;
 
 		if (retcode < 0)
 		{
@@ -72,20 +144,64 @@ int recvFile(char *receivedFile , int portNum , int maxSize , int options)
 			exit(-1) ;
 		} 
 
-		if (strcmp(receive_buffer , "end transmission") == 0) 
+		received_flags[0] = receive_buffer[0] ;
+
+		received_sequence_char[0] = receive_buffer[1] ;
+		received_sequence_char[1] = receive_buffer[2] ;
+		received_sequence_char[2] = receive_buffer[3] ;
+		received_sequence_char[3] = receive_buffer[4] ;
+		received_sequence_char[4] = receive_buffer[5] ;
+		received_sequence_char[5] = receive_buffer[6] ;
+		received_sequence_char[6] = receive_buffer[7] ;
+		received_sequence_char[7] = receive_buffer[8] ;
+		received_sequence_char[8] = receive_buffer[9] ;
+		received_sequence_char[9] = receive_buffer[10] ;
+
+		sscanf(received_sequence_char , "%i" , &received_sequence_int) ;
+
+		if (received_flags[0] == '1') 
 		{
-			printf("\n> file transfer complete.\n") ;	
+			printf("\n> file transfer complete.\n") ;
+			fclose(file) ;
 			break ;
 		}
 
 		else 
 		{
-			printf("\n> message received:  %s\n" , receive_buffer) ;
+			// printf("\n> received_flags: %c\n" , received_flags[2]) ;
+			printf("\n> received_sequence_int: %i\n" , received_sequence_int) ;
+
+			if (next_sequence_number == -1)
+			{
+				next_sequence_number = received_sequence_int ;
+
+				next_sequence_number++ ;
+				memset(message_buffer , '\0' , sizeof(message_buffer)) ; // clear buffer.
+				memcpy(message_buffer , &receive_buffer[11] , sizeof(message_buffer)) ;
+				// printf("writing message to file:  %s\n" , message_buffer) ; // i am assuming this is correct.
+
+				fputs(message_buffer , file) ; // write message to file.
+			}
+
+			else if (received_sequence_int == next_sequence_number) // correct message is received.
+			{
+				next_sequence_number++ ;
+				memset(message_buffer , '\0' , sizeof(message_buffer)) ; // clear buffer.
+				memcpy(message_buffer , &receive_buffer[11] , sizeof(message_buffer)) ;
+				// printf("writing message to file:  %s\n" , message_buffer) ; // i am assuming this is correct.
+
+				fputs(message_buffer , file) ; // write message to file.
+			}
+			// printf("\n> header message: %c" , receive_buffer[12]) ;
+			// printf("\n> message received:  \n%s\n" , receive_buffer) ; // print whole message.
 		}
 
 		memcpy(&client_ip_addr , &sender_addr.sin_addr.s_addr , 4) ;
 
-		strcpy(output_buffer , "ACK") ;
+		memset(output_buffer , '\0' , sizeof(receive_buffer)) ; // clear buffer.
+		snprintf(output_buffer , 12 , "%i%i" , 0 , received_sequence_int) ;
+		// strcpy(output_buffer , "FUCK") ;
+		printf("\n> sending: %s\n" , output_buffer) ;
 		retcode = sendto(receiver_s , output_buffer , (strlen(output_buffer) + 1) , 0 , (struct sockaddr *)&sender_addr , sizeof(sender_addr)) ;
 
 		if (retcode < 0)
