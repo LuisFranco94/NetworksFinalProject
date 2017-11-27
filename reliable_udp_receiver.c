@@ -22,9 +22,9 @@ int main(int argc , char *argv[])
 	if (argc != 3)
 	{
 		printf("\n") ;
-		printf("> usage:  ./a.out port_number file_output\n") ;
-		printf("> example:  ./a.out 6008 received_file.dat\n") ;
-		printf("> exiting.\n\n") ;
+		printf(" > usage:  ./a.out port_number file_output\n") ;
+		printf(" > example:  ./a.out 6008 received_file.dat\n") ;
+		printf(" > exiting.\n\n") ;
 		return -1 ;
 	}
 
@@ -65,7 +65,7 @@ int recvFile(char *receivedFile , int portNum , int maxSize , int options)
 
 	if (receiver_s < 0)
 	{
-		printf("> socket() failed.  exiting.  \n") ;
+		printf(" > socket() failed.  exiting.  \n") ;
 		exit(-1) ;
 	}
 
@@ -77,7 +77,7 @@ int recvFile(char *receivedFile , int portNum , int maxSize , int options)
 
 	if (bind(receiver_s , (struct sockaddr *)&receiver_addr , sizeof(receiver_addr)) < 0) // binds address information to socket.
 	{
-		printf("> bind() failed.  exiting.  \n") ;
+		printf(" > bind() failed.  exiting.  \n") ;
 		exit(-1) ;
 	} 
 
@@ -91,7 +91,7 @@ int recvFile(char *receivedFile , int portNum , int maxSize , int options)
 	// receive messages from sender.
 
 	printf("\n") ;
-	printf("> waiting for message...\n") ;
+	printf(" > waiting for message...\n") ;
 	
 	while (1) // receive message.
 	{
@@ -100,7 +100,7 @@ int recvFile(char *receivedFile , int portNum , int maxSize , int options)
 
 		if (retcode < 0)
 		{
-			printf("> recvfrom() failed.  exiting.  \n") ;
+			printf(" > recvfrom() failed.  exiting.  \n") ;
 			exit(-1) ;
 		} 
 
@@ -121,10 +121,10 @@ int recvFile(char *receivedFile , int portNum , int maxSize , int options)
 
 		if (received_flags[0] == '1') // signifies end of transmission.  reply with ACK and exit loop.
 		{
-			printf("> received_sequence_int: %i\n" , received_sequence_int) ;
+			printf(" > received sequence number: %i\n" , received_sequence_int) ;
 			memset(output_buffer , '\0' , sizeof(receive_buffer)) ; 
 			snprintf(output_buffer , 12 , "%i%i" , 0 , received_sequence_int) ;
-			printf("> sending: %s\n" , output_buffer) ;
+			printf(" > sending: %s\n" , output_buffer) ;
 			retcode = sendto(receiver_s , output_buffer , (strlen(output_buffer) + 1) , 0 , (struct sockaddr *)&sender_addr , sizeof(sender_addr)) ;
 
 			if (retcode < 0)
@@ -133,8 +133,8 @@ int recvFile(char *receivedFile , int portNum , int maxSize , int options)
 				exit(-1) ;
 			}
 
-			printf("> packet_good: %i packet_bad: %i\n" , packet_good , packet_bad) ;
-			printf("> file transfer complete.\n\n") ;
+			printf(" > packet_good: %i packet_bad: %i\n" , packet_good , packet_bad) ;
+			printf(" > file transfer complete.\n\n") ;
 			fclose(file) ;
 
 			break ;
@@ -142,7 +142,7 @@ int recvFile(char *receivedFile , int portNum , int maxSize , int options)
 
 		else
 		{
-			printf("> received_sequence_int: %i\n" , received_sequence_int) ;
+			printf(" > received sequence number: %i\n" , received_sequence_int) ;
 
 			if (next_sequence_number == -1) // signifies first sequence received.  initialize values.
 			{
@@ -164,7 +164,7 @@ int recvFile(char *receivedFile , int portNum , int maxSize , int options)
 
 			else // otherwise do nothing.
 			{
-				printf("> bad packet!  discarded!\n") ;
+				printf(" > bad packet!  discarded!\n") ;
 				packet_bad++ ;
 			}
 		}
@@ -175,22 +175,22 @@ int recvFile(char *receivedFile , int portNum , int maxSize , int options)
 		{
 			memset(output_buffer , '\0' , sizeof(receive_buffer)) ;
 
-			if (received_sequence_int == next_sequence_number - 1)
+			if (received_sequence_int == next_sequence_number - 1) // good sequence value.
 			{
 				snprintf(output_buffer , 12 , "%i%i" , 0 , next_sequence_number - 1) ;
 			}
 
-			else
+			else // incorrect sequence value.
 			{
-				snprintf(output_buffer , 12 , "%i%i" , 0 , next_sequence_number) ;
+				snprintf(output_buffer , 12 , "%i%i" , 1 , next_sequence_number) ;
 			}
 
-			printf("> sending: %s\n" , output_buffer) ;
+			printf(" > sending: %s\n" , output_buffer) ;
 			retcode = sendto(receiver_s , output_buffer , (strlen(output_buffer) + 1) , 0 , (struct sockaddr *)&sender_addr , sizeof(sender_addr)) ;
 
 			if (retcode < 0)
 			{
-				printf("> sendto() failed.  exiting.  \n") ;
+				printf(" > sendto() failed.  exiting.  \n") ;
 				exit(-1) ;
 			}
 		}
@@ -198,7 +198,7 @@ int recvFile(char *receivedFile , int portNum , int maxSize , int options)
 
 	if (close(receiver_s) < 0)
 	{
-		printf("> close() failed.  exiting.  \n") ;
+		printf(" > close() failed.  exiting.  \n") ;
 		exit(-1) ;
 	}
 
