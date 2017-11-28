@@ -41,8 +41,8 @@ int recvFile(char *receivedFile , int portNum , int maxSize , int options)
 	struct sockaddr_in sender_addr ;
 	int addr_len ;
 
-	char receive_buffer[4096] ;
-	char message_buffer[4096] ;
+	char receive_buffer[65000] ;
+	char message_buffer[65000] ;
 	char output_buffer[4096] ;
 
 	int retcode ;
@@ -119,40 +119,47 @@ int recvFile(char *receivedFile , int portNum , int maxSize , int options)
 
 		sscanf(received_sequence_char , "%i" , &received_sequence_int) ;
 
-		if (received_flags[0] == '1') // signifies end of transmission.  reply with ACK and exit loop.
+		if (received_flags[0] == '1') 
 		{
-			printf(" > received sequence number: %i\n" , received_sequence_int) ;
-			memset(output_buffer , '\0' , sizeof(receive_buffer)) ; 
-			snprintf(output_buffer , 12 , "%i%i" , 0 , received_sequence_int) ;
-			printf(" > sending: %s\n" , output_buffer) ;
-			retcode = sendto(receiver_s , output_buffer , (strlen(output_buffer) + 1) , 0 , (struct sockaddr *)&sender_addr , sizeof(sender_addr)) ;
-
-			if (retcode < 0)
-			{
-				printf("sendto() failed.  exiting.  \n") ;
-				exit(-1) ;
-			}
-
-			printf(" > packet_good: %i packet_bad: %i\n" , packet_good , packet_bad) ;
-			printf(" > file transfer complete.\n\n") ;
-			fclose(file) ;
-
-			break ;
+			printf(" > received end transmission: %i\n" , received_sequence_int) ;
 		}
 
 		else
 		{
-			printf(" > received sequence number: %i\n" , received_sequence_int) ;
+			// printf(" > received sequence number: %i\n" , received_sequence_int) ;
+		}
 
-			if (next_sequence_number == -1) // signifies first sequence received.  initialize values.
+		if (next_sequence_number == -1) // signifies first sequence received.  initialize values.
+		{
+			next_sequence_number = received_sequence_int ;
+			next_sequence_number++ ;
+			memset(message_buffer , '\0' , sizeof(message_buffer)) ; // clear buffer.
+			memcpy(message_buffer , &receive_buffer[11] , sizeof(message_buffer)) ;
+		}
+
+		else if (received_sequence_int == next_sequence_number) // correct message is received , write to file.
+		{
+			if (received_flags[0] == '1') // signifies end of transmission.  reply with ACK and exit loop.
 			{
-				next_sequence_number = received_sequence_int ;
-				next_sequence_number++ ;
-				memset(message_buffer , '\0' , sizeof(message_buffer)) ; // clear buffer.
-				memcpy(message_buffer , &receive_buffer[11] , sizeof(message_buffer)) ;
+				memset(output_buffer , '\0' , sizeof(receive_buffer)) ; 
+				snprintf(output_buffer , 12 , "%i%i" , 0 , received_sequence_int) ;
+				printf(" > sending: %s\n" , output_buffer) ;
+				retcode = sendto(receiver_s , output_buffer , (strlen(output_buffer) + 1) , 0 , (struct sockaddr *)&sender_addr , sizeof(sender_addr)) ;
+
+				if (retcode < 0)
+				{
+					printf("sendto() failed.  exiting.  \n") ;
+					exit(-1) ;
+				}
+
+				printf(" > packet_good: %i packet_bad: %i\n" , packet_good , packet_bad) ;
+				printf(" > file transfer complete.\n\n") ;
+				fclose(file) ;
+
+				break ;
 			}
 
-			else if (received_sequence_int == next_sequence_number) // correct message is received , write to file.
+			else
 			{
 				next_sequence_number++ ;
 				memset(message_buffer , '\0' , sizeof(message_buffer)) ;
@@ -161,13 +168,14 @@ int recvFile(char *receivedFile , int portNum , int maxSize , int options)
 				fputs(message_buffer , file) ;
 				packet_good++ ;
 			}
-
-			else // otherwise do nothing.
-			{
-				printf(" > bad packet!  discarded!\n") ;
-				packet_bad++ ;
-			}
 		}
+
+		else // otherwise do nothing.
+		{
+			// printf(" > bad packet!  discarded!\n") ;
+			packet_bad++ ;
+		}
+
 
 		memcpy(&client_ip_addr , &sender_addr.sin_addr.s_addr , 4) ;
 
@@ -185,7 +193,7 @@ int recvFile(char *receivedFile , int portNum , int maxSize , int options)
 				snprintf(output_buffer , 12 , "%i%i" , 1 , next_sequence_number) ;
 			}
 
-			printf(" > sending: %s\n" , output_buffer) ;
+			// printf(" > sending: %s\n" , output_buffer) ;
 			retcode = sendto(receiver_s , output_buffer , (strlen(output_buffer) + 1) , 0 , (struct sockaddr *)&sender_addr , sizeof(sender_addr)) ;
 
 			if (retcode < 0)

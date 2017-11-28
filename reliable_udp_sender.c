@@ -64,10 +64,11 @@ int sendFile(char *file_name , char *destination_ip_address , int destination_po
 
 	int file_handle ;
 	int file_offset = 0 ; // where the pointer is for pread().  decrement to go back.
-	int file_read_size = 4085 ; // how many characters to try to read from file.
+	int file_read_size = 60000 ; // how many characters to try to read from file.
 	int data_input_length ; // how many characters were actually read from file.
+	int end_of_file_check = 0 ;
 	char file_read_array[file_read_size] ; // contains the read data.
-	char send_buffer[4096] ; // buffer to send.  consists of packet_header and file_read_array.
+	char send_buffer[65000] ; // buffer to send.  consists of packet_header and file_read_array.
 	char receive_buffer[4096] ; // data received (sequence numbers as ACKs are received).
 
 	char packet_header[11] ; // [UDP][FLAG_VAL][SEQUENCE_NUMBER][DATA][UDP]
@@ -92,6 +93,7 @@ int sendFile(char *file_name , char *destination_ip_address , int destination_po
 	srand(time(NULL)) ;
 
 	int data_read_end = -1 ;
+	int transmission_complete = 0 ;
 
 	// create socket to send.
 
@@ -114,7 +116,7 @@ int sendFile(char *file_name , char *destination_ip_address , int destination_po
 	struct timeval tv ;
 	tv.tv_sec = 0 ; // seconds.
 	// tv.tv_usec = 100000 ; // milliseconds.
-	tv.tv_usec = 500000 ; // milliseconds.
+	tv.tv_usec = 10000 ; // milliseconds.
 	setsockopt(sender_socket , SOL_SOCKET , SO_RCVTIMEO , (const char*)&tv , sizeof(struct timeval)) ;
 
 	// open file.
@@ -136,38 +138,72 @@ int sendFile(char *file_name , char *destination_ip_address , int destination_po
 	sequence_number++ ;
 	strcpy(send_buffer , packet_header) ;
 	printf(" > initial send:  %s\n" , send_buffer) ;
-	return_code = sendto(sender_socket , send_buffer , (strlen(send_buffer) + 1) , 0 , (struct sockaddr *)&receiver_address , sizeof(receiver_address)) ;
 
-	if (return_code < 0)
+	while (1)
 	{
-		printf(" > sendto() failed.  exiting.  \n") ;
-		exit(-1) ;
-	}
+		strcpy(send_buffer , packet_header) ;
+		printf(" > initial send:  %s\n" , send_buffer) ;
+		return_code = sendto(sender_socket , send_buffer , (strlen(send_buffer) + 1) , 0 , (struct sockaddr *)&receiver_address , sizeof(receiver_address)) ;
 
-	memset(receive_buffer , '\0' , 4096) ;
-	return_code = recvfrom(sender_socket , receive_buffer , sizeof(receive_buffer) , 0 , (struct sockaddr *)&receiver_address , &address_length) ; // blocking.
+		if (return_code < 0)
+		{
+			printf(" > sendto() failed.  exiting.  \n") ;
+			exit(-1) ;
+		}
 
-	if (return_code < 0)
-	{
-	 	printf(" > connection could not be made.  exiting.  \n") ;
-		exit(-1) ;
+		memset(receive_buffer , '\0' , 4096) ;
+		// return_code = recvfrom(sender_socket , receive_buffer , sizeof(receive_buffer) , MSG_DONTWAIT , (struct sockaddr *)&receiver_address , &address_length) ; // blocking.
+		return_code = recvfrom(sender_socket , receive_buffer , sizeof(receive_buffer) , 0 , (struct sockaddr *)&receiver_address , &address_length) ; // non-blocking.
+
+		if (return_code < 0)
+		{
+			printf(" > connection could not be made.  retrying.  \n") ;
+			resend++ ;
+
+			if (resend == 7)
+			{
+				printf(" > connection could not be made.  exiting.  \n") ;
+				exit(-1) ;
+			}
+		}
+
+		else
+		{
+			resend = 0 ;
+			break ;
+		}
 	}
 
 	// start data transmission.
 
 	do
-	{	 
-		memset(send_buffer , '\0' , 4096) ;
-		memset(file_read_array , '\0' , file_read_size) ;
+	{	
+		// checking for end of file.
+
+		memset(file_read_array , '\0' , sizeof(file_read_array)) ;
+
+		file_offset = file_offset + file_read_size ;
+		end_of_file_check = pread(file_handle , file_read_array , file_read_size , file_offset) ;
+		file_offset = file_offset - file_read_size ;
+
+		memset(send_buffer , '\0' , sizeof(send_buffer)) ;
+		memset(file_read_array , '\0' , sizeof(file_read_array)) ;
 		data_input_length = pread(file_handle , file_read_array , file_read_size , file_offset) ;
 
-		if (data_input_length > 0) // if data has been read , send.  else , exit.
-		{
-			window_count++ ;
+		// printf(" > end_of_file_check:  %i\n" , end_of_file_check) ;
+		// printf(" > transmission_complete:  %i\n" , transmission_complete) ;
 
-			// create packet header.
+		if (transmission_complete == 0) // if data has been read , send.  else , exit.
+		{
+
+			window_count++ ;
 			
-			if (window_count == window_size)
+			if (end_of_file_check <= 0)
+			{
+				window_count = window_size ;
+			}
+
+			if (window_count == window_size || end_of_file_check <= 0)
 			{
 				flag_val = 2 ; // set to request ACK when enough messages have been sent.
 			}
@@ -177,18 +213,16 @@ int sendFile(char *file_name , char *destination_ip_address , int destination_po
 				flag_val = 0 ; // otherwise , do not set a flag.
 			}
 
+			// create packet header.
+
 			snprintf(packet_header , 12 , "%i%i" , flag_val , sequence_number) ;
 			expected_sequence_int = sequence_number ;
 			sequence_number++ ;
-
-			// assemble message into send_buffer.
 
 			strcpy(send_buffer , packet_header) ;
 			strcat(send_buffer , file_read_array) ;
 
 			// send message.
-
-			printf(" > sending:  %s\n" , packet_header) ;
 
 			if (enable_loss == 1) // if packet loss is enabled.
 			{
@@ -197,8 +231,9 @@ int sendFile(char *file_name , char *destination_ip_address , int destination_po
 
 				if (random_value > loss_percentage)
 				{
-					return_code = sendto(sender_socket , send_buffer , (strlen(send_buffer) + 1) , 0 , (struct sockaddr *)&receiver_address , sizeof(receiver_address)) ;
-					// return_code = sendto(sender_socket , send_buffer , data_input_length , 0 , (struct sockaddr *)&receiver_address , sizeof(receiver_address)) ;
+					// printf(" > sending:  %s\n" , packet_header) ;
+
+					return_code = sendto(sender_socket , send_buffer , (strlen(send_buffer)) , 0 , (struct sockaddr *)&receiver_address , sizeof(receiver_address)) ;
 
 					if (return_code < 0)
 					{
@@ -207,12 +242,18 @@ int sendFile(char *file_name , char *destination_ip_address , int destination_po
 					}
 
 				}
+
+				else
+				{
+					printf(" > sending:  %s (emulated packet loss)\n" , packet_header) ;
+				}
 			}
 
 			else // if packet loss is not enabled.
 			{
-				return_code = sendto(sender_socket , send_buffer , (strlen(send_buffer) + 1) , 0 , (struct sockaddr *)&receiver_address , sizeof(receiver_address)) ;
-				// return_code = sendto(sender_socket , send_buffer , data_input_length , 0 , (struct sockaddr *)&receiver_address , sizeof(receiver_address)) ;
+				// printf(" > sending:  %s\n" , packet_header) ;
+
+				return_code = sendto(sender_socket , send_buffer , (strlen(send_buffer)) , 0 , (struct sockaddr *)&receiver_address , sizeof(receiver_address)) ;
 
 				if (return_code < 0)
 				{
@@ -235,7 +276,7 @@ int sendFile(char *file_name , char *destination_ip_address , int destination_po
 					resend++ ;
 					window_count-- ;
 
-					if (resend == 15)
+					if (resend == 100)
 					{
 						printf(" > connection lost.  exiting.  \n") ;
 						exit(-1) ;
@@ -259,7 +300,7 @@ int sendFile(char *file_name , char *destination_ip_address , int destination_po
 
 					sscanf(received_sequence_char , "%i" , &received_sequence_int) ;
 					
-					printf(" > received sequence number:  %i\n" , received_sequence_int) ;
+					// printf(" > received sequence number:  %i\n" , received_sequence_int) ;
 
 					if (received_sequence_int != expected_sequence_int) // if received sequence number is incorrect , decrease window size and set to resend from correct sequence number.
 					{
@@ -267,8 +308,8 @@ int sendFile(char *file_name , char *destination_ip_address , int destination_po
 						window_count = 0 ;
 						packet_bad = packet_bad + (sequence_number - received_sequence_int) ;
 						printf(" > expected sequence number:  %i\n" , expected_sequence_int) ;
-						printf(" > lost a packet!  packet_good: %i packet_bad: %i\n" , packet_good , packet_bad) ;
-						printf(" > difference: %i\n" , expected_sequence_int - received_sequence_int) ;
+						printf(" > lost a packet! packet_good: %i packet_bad: %i\n" , packet_good , packet_bad) ;
+						// printf(" > difference: %i\n" , expected_sequence_int - received_sequence_int) ;
 
 						file_offset = file_offset - (sequence_number - received_sequence_int) * file_read_size ;
 
@@ -281,40 +322,25 @@ int sendFile(char *file_name , char *destination_ip_address , int destination_po
 						window_size = window_size + 1 ;
 						window_count = 0 ;
 						resend = 0 ;
+						
+						if (end_of_file_check <= 0)
+						{
+							transmission_complete = 1 ;
+						}
+						
 					}
 				}
 			}
 		}
 
-		else
-		{
-			data_read_end = 1 ;
-		}
-	} while (data_input_length > 0) ;
-
-	if (data_read_end != 1)
-	{
-		return_code = close(sender_socket) ;
-
-		if (return_code < 0)
-		{
-			printf(" > close() failed.  exiting.  \n") ;
-			exit(-1) ;
-		}
-
-		printf(" > connection lost.  exiting.  \n") ;
-
-		return -1 ;
-	}
-
-	// send packet to close connection.
+	} while (transmission_complete == 0) ;
 
 	flag_val = 1 ; // set flag to signal end of file transmission.
 
 	snprintf(packet_header , 12 , "%i%i" , flag_val , sequence_number) ;
 	strcpy(send_buffer , packet_header) ;
 	return_code = sendto(sender_socket , send_buffer , (strlen(send_buffer) + 1) , 0 , (struct sockaddr *)&receiver_address , sizeof(receiver_address)) ;
-	printf(" > sending:  %s\n" , packet_header) ;
+	printf(" > sending end transmission:  %s\n" , packet_header) ;
 
 	if (return_code < 0)
 	{
@@ -328,14 +354,16 @@ int sendFile(char *file_name , char *destination_ip_address , int destination_po
 
 		if (return_code < 0)
 		{
-			printf(" > recvfrom() failed.  resending.\n") ;
-			resend++ ;
-
 			if (resend == 15)
 			{
 				printf(" > connection did not close correctly.  exiting.  \n") ;
 				exit(-1) ;
 			}
+
+			printf(" > recvfrom() failed.  resending.\n") ;
+			printf(" > sending end transmission:  %s\n" , packet_header) ;
+			return_code = sendto(sender_socket , send_buffer , (strlen(send_buffer) + 1) , 0 , (struct sockaddr *)&receiver_address , sizeof(receiver_address)) ;
+			resend++ ;
 		}
 
 		else 
